@@ -11,6 +11,7 @@ from . import errors, services
 from .admin_api import admin_router
 from .auth import device_auth
 from .broadcast import broadcast_match
+from .notifications import notify_match_created
 from .models import Match
 from .schemas import (
     AddPlayerIn,
@@ -38,7 +39,7 @@ DEVICE_FORBIDDEN = "Không có quyền truy cập trận đấu này"
 
 
 def _owned_match(request, match_id: int) -> Match:
-    match = Match.objects.filter(id=match_id).first()
+    match = Match.objects.filter(id=match_id, deleted_at__isnull=True).first()
     if match is None:
         raise HttpError(404, errors.MATCH_NOT_FOUND)
     if match.device_id != request.auth:
@@ -65,6 +66,7 @@ def create_match(request, payload: CreateMatchIn):
         payload.name,
         [p.dict() for p in payload.players],
     )
+    notify_match_created(match)
     return _match_response(match.id)
 
 

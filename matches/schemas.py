@@ -71,6 +71,7 @@ class AdminMatchSchema(CamelSchema):
     player_count: int
     created_at: datetime
     device_id: UUID
+    deleted_at: Optional[datetime] = None
 
 
 class TokenSchema(CamelSchema):
@@ -156,6 +157,7 @@ def build_admin_match(match: Match) -> dict:
         "player_count": len(players),
         "created_at": match.created_at,
         "device_id": match.device_id,
+        "deleted_at": match.deleted_at,
     }
 
 

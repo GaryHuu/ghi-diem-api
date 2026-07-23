@@ -26,6 +26,9 @@ class Match(models.Model):
     )
     device_id = models.UUIDField(db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    # Soft delete: user-facing querysets exclude deleted matches; the admin
+    # dashboard still sees them.
+    deleted_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["-created_at", "-id"]
