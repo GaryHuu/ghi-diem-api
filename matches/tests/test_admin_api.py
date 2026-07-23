@@ -92,9 +92,10 @@ def test_list_returns_matches_from_different_devices(client):
     resp = client.get("/admin/matches", headers=_auth_headers(client))
     assert resp.status_code == 200
     body = resp.json()
-    names = {m["name"] for m in body}
+    assert body["count"] == 2
+    names = {m["name"] for m in body["items"]}
     assert {"Match A", "Match B"} <= names
-    match = body[0]
+    match = body["items"][0]
     assert set(match.keys()) == {
         "id",
         "name",
@@ -109,6 +110,32 @@ def test_list_returns_matches_from_different_devices(client):
     # deviceId is admin-only: exposed here (behind the Bearer token) for the
     # dashboard's device column/filter, never on shared/owner read-models.
     assert match["deviceId"] in {str(dev_a), str(dev_b)}
+
+
+def test_list_pagination(client):
+    dev = uuid.uuid4()
+    for i in range(3):
+        services.create_match(dev, f"Match {i}", [{"name": "Alice"}, {"name": "Bob"}])
+
+    page1 = client.get(
+        "/admin/matches?page=1&page_size=2", headers=_auth_headers(client)
+    ).json()
+    page2 = client.get(
+        "/admin/matches?page=2&page_size=2", headers=_auth_headers(client)
+    ).json()
+
+    assert page1["count"] == 3
+    assert page2["count"] == 3
+    assert len(page1["items"]) == 2
+    assert len(page2["items"]) == 1
+    assert page1["page"] == 1
+    assert page2["page"] == 2
+    assert page1["pageSize"] == 2
+    assert page1["totalPages"] == 2
+    # Newest first (model ordering) and no overlap between pages.
+    assert page1["items"][0]["name"] == "Match 2"
+    ids = [m["id"] for m in page1["items"] + page2["items"]]
+    assert len(ids) == len(set(ids))
 
 
 # --------------------------------------------------------------------------- #
