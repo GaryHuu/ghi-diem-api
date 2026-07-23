@@ -2,6 +2,8 @@ import json
 
 import pytest
 
+from matches.models import Match
+
 pytestmark = pytest.mark.django_db
 
 
@@ -143,3 +145,58 @@ def test_broadcast_called_after_score_mutation(client, headers, monkeypatch):
         headers=headers,
     )
     assert calls == [match["id"]]
+
+
+# --------------------------------------------------------------------------- #
+# Soft delete
+# --------------------------------------------------------------------------- #
+def test_delete_is_soft(client, headers):
+    match = _create_match(client, headers)
+    mid = match["id"]
+    token = client.post(f"/matches/{mid}/share", headers=headers).json()["token"]
+
+    resp = client.delete(f"/matches/{mid}", headers=headers)
+    assert resp.status_code == 200
+
+    # Row survives with deleted_at set; user-facing views all 404/exclude it.
+    db_match = Match.objects.get(id=mid)
+    assert db_match.deleted_at is not None
+    assert client.get(f"/matches/{mid}", headers=headers).status_code == 404
+    ids = [m["id"] for m in client.get("/matches", headers=headers).json()]
+    assert mid not in ids
+    assert client.get(f"/shared/{token}").status_code == 404
+
+
+# --------------------------------------------------------------------------- #
+# Telegram notification on match creation
+# --------------------------------------------------------------------------- #
+def test_create_match_sends_telegram_notification(client, headers, monkeypatch):
+    from matches import notifications
+
+    sent = []
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test-token")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "123")
+    monkeypatch.setattr(notifications, "_send", lambda *args: sent.append(args))
+    monkeypatch.setattr(
+        notifications.threading,
+        "Thread",
+        lambda target, args, daemon: type("T", (), {"start": lambda self: target(*args)})(),
+    )
+
+    match = _create_match(client, headers)
+    assert len(sent) == 1
+    token, chat_id, text = sent[0]
+    assert (token, chat_id) == ("test-token", "123")
+    assert "/dashboard" in text
+    db_match = Match.objects.get(id=match["id"])
+    assert str(db_match.device_id) in text
+
+
+def test_notification_disabled_without_env(client, headers, monkeypatch):
+    from matches import notifications
+
+    sent = []
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+    monkeypatch.setattr(notifications, "_send", lambda *args: sent.append(args))
+    _create_match(client, headers)
+    assert sent == []

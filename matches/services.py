@@ -8,6 +8,7 @@ Match row to avoid clobbering.
 from __future__ import annotations
 
 from django.db import transaction
+from django.utils import timezone
 
 from . import errors
 from .models import Match, Player, ShareLink
@@ -100,11 +101,16 @@ def create_match(device_id, name: str, players_data: list[dict]) -> Match:
 
 
 def get_matches(device_id) -> list[Match]:
-    return list(Match.objects.filter(device_id=device_id).prefetch_related("players"))
+    return list(
+        Match.objects.filter(device_id=device_id, deleted_at__isnull=True)
+        .prefetch_related("players")
+    )
 
 
 def delete_match(match: Match) -> None:
-    match.delete()
+    """Soft delete: hide from user-facing views, keep the row for the admin."""
+    match.deleted_at = timezone.now()
+    match.save(update_fields=["deleted_at"])
 
 
 # --------------------------------------------------------------------------- #
@@ -261,7 +267,7 @@ def get_or_create_share_link(match: Match) -> ShareLink:
 def get_match_by_token(token: str) -> Match | None:
     link = (
         ShareLink.objects.select_related("match")
-        .filter(token=token)
+        .filter(token=token, match__deleted_at__isnull=True)
         .first()
     )
     return link.match if link else None

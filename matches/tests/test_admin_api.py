@@ -103,6 +103,7 @@ def test_list_returns_matches_from_different_devices(client):
         "playerCount",
         "createdAt",
         "deviceId",
+        "deletedAt",
     }
     assert match["playerCount"] == 2
     # deviceId is admin-only: exposed here (behind the Bearer token) for the

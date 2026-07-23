@@ -53,7 +53,7 @@ class ShareConsumer(AsyncJsonWebsocketConsumer):
     def _get_link(self, token):
         return (
             ShareLink.objects.select_related("match")
-            .filter(token=token)
+            .filter(token=token, match__deleted_at__isnull=True)
             .first()
         )
 
