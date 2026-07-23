@@ -1,0 +1,31 @@
+[project]
+name = "ghi-diem-api"
+version = "0.1.0"
+description = "Django Ninja + Channels backend for Ghi Diem Online (Vietnamese card-game score tracker)"
+requires-python = ">=3.11"
+dependencies = [
+    "django>=5.0,<5.2",
+    "django-ninja>=1.3",
+    "channels>=4.1",
+    "channels-redis>=4.2",
+    "psycopg[binary]>=3.2",
+    "django-cors-headers>=4.4",
+    "uvicorn[standard]>=0.30",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-django>=4.9",
+    "pytest-asyncio>=0.24",
+    "daphne>=4.1",  # test-only: channels.testing helpers import it (runtime uses uvicorn)
+]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings"
+python_files = ["test_*.py", "tests.py"]
+asyncio_mode = "auto"
+addopts = "-q"
+
+[tool.uv]
+package = false
