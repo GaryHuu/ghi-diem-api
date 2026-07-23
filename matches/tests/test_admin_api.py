@@ -102,8 +102,12 @@ def test_list_returns_matches_from_different_devices(client):
         "total",
         "playerCount",
         "createdAt",
+        "deviceId",
     }
     assert match["playerCount"] == 2
+    # deviceId is admin-only: exposed here (behind the Bearer token) for the
+    # dashboard's device column/filter, never on shared/owner read-models.
+    assert match["deviceId"] in {str(dev_a), str(dev_b)}
 
 
 # --------------------------------------------------------------------------- #
