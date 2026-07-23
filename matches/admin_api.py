@@ -16,9 +16,11 @@ from .models import Match
 from .schemas import (
     AdminMatchSchema,
     ErrorSchema,
+    PageSchema,
     SharedMatchSchema,
     TokenSchema,
     build_admin_match,
+    build_page,
     build_shared,
 )
 
@@ -54,10 +56,16 @@ def login(request, payload: LoginIn):
     return {"token": token}
 
 
-@admin_router.get("/matches", auth=AdminBearer(), response=list[AdminMatchSchema], by_alias=True)
-def list_matches(request):
-    matches = Match.objects.prefetch_related("players").all()
-    return [build_admin_match(m) for m in matches]
+@admin_router.get(
+    "/matches", auth=AdminBearer(), response=PageSchema[AdminMatchSchema], by_alias=True
+)
+def list_matches(request, page: int = 1, page_size: int = 10):
+    page = max(page, 1)
+    page_size = min(max(page_size, 1), 100)
+    queryset = Match.objects.prefetch_related("players").all()
+    offset = (page - 1) * page_size
+    items = [build_admin_match(m) for m in queryset[offset : offset + page_size]]
+    return build_page(items, queryset.count(), page, page_size)
 
 
 @admin_router.get(

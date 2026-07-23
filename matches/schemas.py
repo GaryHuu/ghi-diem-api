@@ -7,8 +7,9 @@ credential) -- there is a test asserting this.
 """
 from __future__ import annotations
 
+import math
 from datetime import datetime
-from typing import Optional
+from typing import Generic, Optional, TypeVar
 from uuid import UUID
 
 from ninja import Schema
@@ -21,6 +22,32 @@ from .services import current_game_number
 
 class CamelSchema(Schema):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+
+ItemT = TypeVar("ItemT")
+
+
+class PageSchema(CamelSchema, Generic[ItemT]):
+    """Generic paginated envelope: reuse as ``PageSchema[SomeSchema]``.
+
+    ``count`` is the total number of items across all pages.
+    """
+
+    items: list[ItemT]
+    count: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
+def build_page(items: list, count: int, page: int, page_size: int) -> dict:
+    return {
+        "items": items,
+        "count": count,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": math.ceil(count / page_size),
+    }
 
 
 # --------------------------------------------------------------------------- #
