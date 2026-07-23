@@ -1,8 +1,9 @@
 # ghi-diem-api
 
 Django 5 + django-ninja + Channels backend for **Ghi Điểm Online**, a Vietnamese
-card-game score tracker. REST for match/player/score CRUD (zero-sum enforced
-server-side), plus a public read-only realtime share view over WebSocket.
+card-game score tracker (frontend: [ghi-diem-online](https://github.com/GaryHuu/ghi-diem-online)).
+REST for match/player/score CRUD (zero-sum enforced server-side), a public
+read-only realtime share view over WebSocket, and a read-only admin API.
 
 ## Stack
 
@@ -54,6 +55,28 @@ uv run pytest        # sqlite test DB + in-memory channel layer
 | POST | `/api/matches/{id}/share` | idempotent, returns `{token}` |
 | GET | `/api/shared/{token}` | public read-model (no device auth) |
 | WS | `/ws/share/{token}` | envelope `{"type":"match.snapshot","data":{...}}` |
+
+### Admin (read-only, Bearer token)
+
+The admin user is seeded once by a data migration; the password comes from the
+`ADMIN_SEED_PASSWORD` env var (hashed with Django's PBKDF2 hasher, never stored
+in plaintext). Login returns a signed token valid for 24h.
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| POST | `/api/admin/login` | `{username, password}` -> `{token}` |
+| GET | `/api/admin/matches` | all matches across devices |
+| GET | `/api/admin/matches/{id}` | full detail, no `device_id` in the payload |
+
+Send the token as `Authorization: Bearer <token>`. Missing/invalid/expired -> 401.
+
+## Database schema
+
+See [`docs/schema.dbml`](docs/schema.dbml) — paste into [dbdiagram.io](https://dbdiagram.io/d)
+to render the ER diagram. Tables: `matches_match`, `matches_player` (scores as a
+JSON array per player), `matches_sharelink` (FK + `permission`, ready for a future
+share-edit mode).
+
 ## Production deploy (self-host)
 
 Architecture: infra-level ingress (e.g. Cloudflare Tunnel, managed outside this repo) -> api on 127.0.0.1:8000 (uvicorn, N workers) -> postgres + redis. The FE lives on Vercel with `VITE_API_URL=https://api.ghidiem.online`.
