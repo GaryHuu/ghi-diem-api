@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Optional
+from uuid import UUID
 
 from ninja import Schema
 from pydantic import ConfigDict
@@ -57,7 +58,11 @@ class SharedMatchSchema(CamelSchema):
 
 
 class AdminMatchSchema(CamelSchema):
-    """Admin listing read-model (all devices). No ``device_id``."""
+    """Admin listing read-model (all devices).
+
+    The ONLY read-model that carries ``device_id`` — it sits behind the admin
+    Bearer token. Shared/WS/owner read-models must never include it.
+    """
 
     id: int
     name: str
@@ -65,6 +70,7 @@ class AdminMatchSchema(CamelSchema):
     total: int
     player_count: int
     created_at: datetime
+    device_id: UUID
 
 
 class TokenSchema(CamelSchema):
@@ -149,6 +155,7 @@ def build_admin_match(match: Match) -> dict:
         "total": current_game_number(players),
         "player_count": len(players),
         "created_at": match.created_at,
+        "device_id": match.device_id,
     }
 
 
