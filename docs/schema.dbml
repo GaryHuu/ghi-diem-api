@@ -1,0 +1,61 @@
+// Ghi Diem Online — database schema
+// Paste into https://dbdiagram.io/d (or import as .dbml)
+// Source of truth: matches/models.py
+
+Project ghi_diem_api {
+  database_type: 'PostgreSQL'
+  Note: 'Score-tracking backend. Ownership = anonymous device UUID (no user accounts). Game count is derived from len(player.scores), so Match has no current_game/total_games columns.'
+}
+
+Enum match_status {
+  playing
+  ended
+}
+
+Enum share_permission {
+  view // future: edit (multi-device share-edit)
+}
+
+Table matches_match {
+  id bigint [pk, increment]
+  name varchar(255) [not null]
+  status match_status [not null, default: 'playing']
+  device_id uuid [not null, note: 'Owner credential — never serialized to shared/WS read-models']
+  created_at timestamptz [not null, note: 'auto_now_add']
+
+  indexes {
+    device_id
+  }
+
+  Note: 'Ordering: -created_at, -id'
+}
+
+Table matches_player {
+  id bigint [pk, increment]
+  match_id bigint [not null]
+  name varchar(255) [not null]
+  scores jsonb [not null, default: '[]', note: 'list[int|null], index = game number (0-indexed). Zero-sum enforced per game at next/end game']
+  gap int [null, note: 'per-player gap override; null = use global setting']
+  auto_fill boolean [not null, default: false, note: 'only one per match; score recomputed = -sum(others) after every write']
+  avatar text [null, note: 'Base64 JPEG <= 200x200']
+  "order" int [not null, default: 0, note: 'drag-drop position']
+
+  Note: 'Ordering: order, id'
+}
+
+Table matches_sharelink {
+  id bigint [pk, increment]
+  match_id bigint [not null]
+  token varchar(64) [not null, unique, note: 'secrets.token_urlsafe(24) — unguessable, permanent']
+  permission share_permission [not null, default: 'view']
+  created_at timestamptz [not null, note: 'auto_now_add']
+
+  indexes {
+    token [unique]
+  }
+
+  Note: 'FK (not one-to-one): a match can later hold multiple links with different permissions'
+}
+
+Ref: matches_player.match_id > matches_match.id [delete: cascade]
+Ref: matches_sharelink.match_id > matches_match.id [delete: cascade]

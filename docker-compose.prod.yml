@@ -1,0 +1,7 @@
+# Production overlay. The API is published on 127.0.0.1:8000 (loopback only);
+# ingress/TLS (e.g. Cloudflare Tunnel) is handled at the infra level, outside this repo.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+services:
+  api:
+    ports:
+      - "127.0.0.1:8000:8000"
