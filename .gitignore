@@ -1,0 +1,22 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Virtual envs
+.venv/
+venv/
+
+# Django
+db.sqlite3
+*.log
+
+# Env
+.env
+
+# Test / tooling caches
+.pytest_cache/
+.uv/
+uv.lock
