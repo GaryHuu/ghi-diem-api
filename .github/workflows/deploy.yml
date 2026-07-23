@@ -1,0 +1,21 @@
+name: Deploy
+
+on:
+  push:
+    branches: [production]
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      # deploy.sh does its own git pull inside the existing checkout on the
+      # server (which holds the real .env), so no actions/checkout here.
+      - name: Deploy
+        run: |
+          test -n "${{ vars.DEPLOY_PATH }}" || { echo "Set the DEPLOY_PATH repository variable (Settings > Secrets and variables > Actions > Variables)"; exit 1; }
+          cd "${{ vars.DEPLOY_PATH }}"
+          ./deploy.sh
