@@ -1,0 +1,93 @@
+name: Health
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: health
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      # Cross-run up/down state lives in the Actions cache: every run saves a
+      # fresh entry keyed by run id and the next run restores the most recent
+      # one via the restore-keys prefix. GITHUB_TOKEN cannot write repository
+      # variables (no "variables" permission scope exists), so the variables
+      # API is not an option without a PAT.
+      - name: Restore previous state
+        uses: actions/cache/restore@v4
+        with:
+          path: state.txt
+          key: health-state-${{ github.run_id }}
+          restore-keys: |
+            health-state-
+
+      - name: Probe /api/health (up to 3 attempts)
+        id: probe
+        env:
+          HEALTH_URL: https://api.ghidiem.online/api/health
+        run: |
+          code=000
+          for attempt in 1 2 3; do
+            rm -f body.json
+            code=$(curl -s -o body.json -w "%{http_code}" --max-time 10 "$HEALTH_URL") || code=000
+            if [ "$code" = "200" ]; then
+              break
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              sleep 10
+            fi
+          done
+          if [ "$code" = "200" ]; then
+            status=up
+          else
+            status=down
+          fi
+          detail=$(head -c 300 body.json 2>/dev/null | tr -d '\n' || true)
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "detail=$detail" >> "$GITHUB_OUTPUT"
+
+      # On any failure here the step goes red and the "Save state" step is
+      # skipped, so the previous state is kept and the next run retries the
+      # alert instead of silently swallowing the transition.
+      - name: Alert on state transition
+        env:
+          STATUS: ${{ steps.probe.outputs.status }}
+          CODE: ${{ steps.probe.outputs.code }}
+          DETAIL: ${{ steps.probe.outputs.detail }}
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          prev=$(cat state.txt 2>/dev/null || echo up)
+          echo "previous=$prev current=$STATUS (HTTP $CODE)"
+          if [ "$STATUS" = "$prev" ]; then
+            echo "No transition; nothing to do."
+            echo "$prev" > state.txt
+            exit 0
+          fi
+          if [ "$STATUS" = "down" ]; then
+            text="🔴 api.ghidiem.online DOWN (HTTP $CODE) $DETAIL"
+          else
+            text="🟢 api.ghidiem.online recovered (HTTP $CODE)"
+          fi
+          if [ -z "$BOT_TOKEN" ] || [ -z "$CHAT_ID" ]; then
+            echo "TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID secrets are not set"
+            exit 1
+          fi
+          curl -fsS --max-time 10 -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            -d chat_id="$CHAT_ID" --data-urlencode text="$text" > /dev/null
+          echo "$STATUS" > state.txt
+
+      - name: Save state
+        uses: actions/cache/save@v4
+        with:
+          path: state.txt
+          key: health-state-${{ github.run_id }}

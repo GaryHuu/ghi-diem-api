@@ -7,7 +7,7 @@ public (no device auth). Every successful mutation broadcasts a WS snapshot.
 from ninja import NinjaAPI
 from ninja.errors import HttpError
 
-from . import errors, services
+from . import errors, health, services
 from .admin_api import admin_router
 from .auth import device_auth
 from .broadcast import broadcast_match
@@ -36,6 +36,14 @@ def on_business_error(request, exc: errors.BusinessError):
 
 
 DEVICE_FORBIDDEN = "Không có quyền truy cập trận đấu này"
+
+
+@api.get("/health", auth=None)
+def health_check(request):
+    db_ok = health.check_db()
+    redis_ok = health.check_redis()
+    payload = {"status": "ok" if db_ok and redis_ok else "down", "db": db_ok, "redis": redis_ok}
+    return api.create_response(request, payload, status=200 if db_ok and redis_ok else 503)
 
 
 def _owned_match(request, match_id: int) -> Match:
