@@ -42,8 +42,9 @@ DEVICE_FORBIDDEN = "Không có quyền truy cập trận đấu này"
 def health_check(request):
     db_ok = health.check_db()
     redis_ok = health.check_redis()
-    payload = {"status": "ok" if db_ok and redis_ok else "down", "db": db_ok, "redis": redis_ok}
-    return api.create_response(request, payload, status=200 if db_ok and redis_ok else 503)
+    healthy = db_ok and redis_ok
+    payload = {"status": "ok" if healthy else "down", "db": db_ok, "redis": redis_ok}
+    return api.create_response(request, payload, status=200 if healthy else 503)
 
 
 def _owned_match(request, match_id: int) -> Match:
