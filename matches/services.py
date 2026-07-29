@@ -107,10 +107,26 @@ def get_matches(device_id) -> list[Match]:
     )
 
 
+def touch_match(match: Match) -> None:
+    """Refresh ``updated_at``.
+
+    Django skips ``auto_now`` fields unless they are listed in
+    ``update_fields``, and most mutations only write ``Player`` rows, so every
+    mutating path has to say so explicitly.
+    """
+    match.save(update_fields=["updated_at"])
+
+
 def delete_match(match: Match) -> None:
     """Soft delete: hide from user-facing views, keep the row for the admin."""
     match.deleted_at = timezone.now()
-    match.save(update_fields=["deleted_at"])
+    match.save(update_fields=["deleted_at", "updated_at"])
+
+
+def restore_match(match: Match) -> None:
+    """Undo a soft delete (admin only)."""
+    match.deleted_at = None
+    match.save(update_fields=["deleted_at", "updated_at"])
 
 
 # --------------------------------------------------------------------------- #
@@ -129,13 +145,15 @@ def add_player(match_id: int, name: str, avatar: str | None = None) -> Player:
 
         game_count = current_game_number(players)
         next_order = max((p.order for p in players), default=-1) + 1
-        return Player.objects.create(
+        player = Player.objects.create(
             match=match,
             name=name,
             scores=[0] * game_count,
             avatar=avatar,
             order=next_order,
         )
+        touch_match(match)
+        return player
 
 
 def update_player(match_id: int, player_id: int, fields: dict) -> Player:
@@ -167,6 +185,7 @@ def update_player(match_id: int, player_id: int, fields: dict) -> Player:
 
         if update_cols:
             player.save(update_fields=update_cols)
+            touch_match(match)
         return player
 
 
@@ -176,6 +195,7 @@ def delete_player(match_id: int, player_id: int) -> None:
         deleted, _ = match.players.filter(id=player_id).delete()
         if not deleted:
             raise errors.BusinessError(errors.PLAYER_NOT_FOUND)
+        touch_match(match)
 
 
 # --------------------------------------------------------------------------- #
@@ -199,6 +219,7 @@ def update_score(match_id: int, player_id: int, game_index: int, value) -> Match
         player.save(update_fields=["scores"])
 
         recalculate_auto_fill_player(match, game_index)
+        touch_match(match)
     return match
 
 
@@ -210,6 +231,7 @@ def next_game(match_id: int) -> Match:
         for player in players:
             player.scores.append(0)
             player.save(update_fields=["scores"])
+        touch_match(match)
     return match
 
 
@@ -219,7 +241,7 @@ def end_game(match_id: int) -> Match:
         players = list(match.players.all())
         _validate_all_game_scores(players, current_game_number(players))
         match.status = Match.Status.ENDED
-        match.save(update_fields=["status"])
+        match.save(update_fields=["status", "updated_at"])
     return match
 
 
@@ -250,6 +272,8 @@ def toggle_player_auto_fill(match_id: int, player_id: int) -> Match:
                 target.scores.append(0)
             target.scores[game_index] = -other_sum
             target.save(update_fields=["auto_fill", "scores"])
+
+        touch_match(match)
     return match
 
 
