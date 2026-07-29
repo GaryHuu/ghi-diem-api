@@ -103,6 +103,7 @@ def test_list_returns_matches_from_different_devices(client):
         "total",
         "playerCount",
         "createdAt",
+        "updatedAt",
         "deviceId",
         "deletedAt",
     }

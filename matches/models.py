@@ -26,6 +26,10 @@ class Match(models.Model):
     )
     device_id = models.UUIDField(db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    # Last activity on the match (scores, players, rounds, end, delete).
+    # Most mutations only write Player rows, so they must call
+    # ``services.touch_match`` to refresh this.
+    updated_at = models.DateTimeField(auto_now=True)
     # Soft delete: user-facing querysets exclude deleted matches; the admin
     # dashboard still sees them.
     deleted_at = models.DateTimeField(null=True, blank=True)
