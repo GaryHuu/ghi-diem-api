@@ -33,11 +33,23 @@ jobs:
         id: probe
         env:
           HEALTH_URL: https://api.ghidiem.online/api/health
+          # Probed only when the health check failed, to tell "the API is down"
+          # apart from "this runner has no working network".
+          CONTROL_URL: https://www.cloudflare.com/cdn-cgi/trace
         run: |
           code=000
+          curl_exit=0
           for attempt in 1 2 3; do
             rm -f body.json
-            code=$(curl -s -o body.json -w "%{http_code}" --max-time 10 "$HEALTH_URL") || code=000
+            # No -f: a 5xx must still yield its status code, which is the whole
+            # point of the report. curl's own exit code separates "no response
+            # at all" (code 000) into DNS, connect, timeout and TLS failures.
+            if code=$(curl -s -o body.json -w "%{http_code}" --max-time 10 "$HEALTH_URL"); then
+              curl_exit=0
+            else
+              curl_exit=$?
+              code=${code:-000}
+            fi
             if [ "$code" = "200" ]; then
               break
             fi
@@ -47,12 +59,18 @@ jobs:
           done
           if [ "$code" = "200" ]; then
             status=up
-          else
+          elif curl -fs --max-time 10 -o /dev/null "$CONTROL_URL"; then
             status=down
+          else
+            # Neither the API nor a known-good URL answered, so the runner's own
+            # network is the suspect. Stay quiet rather than cry wolf.
+            status=unknown
           fi
           detail=$(head -c 300 body.json 2>/dev/null | tr -d '\n' || true)
+          echo "status=$status code=$code curl_exit=$curl_exit"
           echo "status=$status" >> "$GITHUB_OUTPUT"
           echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "curl_exit=$curl_exit" >> "$GITHUB_OUTPUT"
           echo "detail=$detail" >> "$GITHUB_OUTPUT"
 
       # On any failure here the step goes red and the "Save state" step is
@@ -62,19 +80,38 @@ jobs:
         env:
           STATUS: ${{ steps.probe.outputs.status }}
           CODE: ${{ steps.probe.outputs.code }}
+          CURL_EXIT: ${{ steps.probe.outputs.curl_exit }}
           DETAIL: ${{ steps.probe.outputs.detail }}
           BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           prev=$(cat state.txt 2>/dev/null || echo up)
           echo "previous=$prev current=$STATUS (HTTP $CODE)"
+          if [ "$STATUS" = "unknown" ]; then
+            echo "Inconclusive run: the control URL failed too. Keeping the previous state."
+            echo "$prev" > state.txt
+            exit 0
+          fi
           if [ "$STATUS" = "$prev" ]; then
             echo "No transition; nothing to do."
             echo "$prev" > state.txt
             exit 0
           fi
           if [ "$STATUS" = "down" ]; then
-            text="🔴 api.ghidiem.online DOWN (HTTP $CODE) $DETAIL"
+            # HTTP 000 means no response arrived, so there is no body to quote.
+            # Name the transport failure instead, it points at the right layer.
+            if [ "$CODE" = "000" ]; then
+              case "$CURL_EXIT" in
+                6) reason="DNS lookup failed" ;;
+                7) reason="connection refused" ;;
+                28) reason="timed out" ;;
+                35) reason="TLS handshake failed" ;;
+                *) reason="curl exit $CURL_EXIT" ;;
+              esac
+              text="🔴 api.ghidiem.online DOWN (no HTTP response, $reason)"
+            else
+              text="🔴 api.ghidiem.online DOWN (HTTP $CODE) $DETAIL"
+            fi
           else
             text="🟢 api.ghidiem.online recovered (HTTP $CODE)"
           fi
